@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tracciabilità Alimentare</title>
+    <style>
+   * { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 10px; display: flex; justify-content: center; align-items: center; }
+.container { width: 800px; height: 550px; overflow: hidden; }
+.header { background: white; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+h1 { color: #667eea; font-size: 1.3em; margin-bottom: 4px; }
+.subtitle { color: #666; font-size: 0.8em; margin-bottom: 8px; }
+.stats { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.stat-box { background: #f0f4ff; padding: 6px 12px; border-radius: 6px; font-weight: bold; color: #667eea; font-size: 0.8em; }
+.reset-btn { background: #667eea; color: white; border: none; padding: 6px 15px; border-radius: 6px; font-size: 0.8em; cursor: pointer; font-weight: bold; transition: all 0.3s; }
+.reset-btn:hover { background: #5568d3; }
+.game-area { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; height: 438px; }
+.reference-area { background: white; border-radius: 10px; padding: 10px; box-shadow: 0 3px 12px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow-y: auto; }
+.reference-area h2 { color: #667eea; margin-bottom: 6px; font-size: 0.85em; }
+.reference-image { width: 100%; max-width: 100px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); margin-bottom: 8px; }
+.puzzle-area { background: white; border-radius: 10px; padding: 10px; box-shadow: 0 3px 12px rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; }
+.puzzle-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; background: #ddd; padding: 2px; border-radius: 8px; max-width: 220px; width: 100%; }
+.puzzle-slot { aspect-ratio: 0.75; background: #f5f5f5; position: relative; overflow: hidden; }
+.puzzle-slot.filled { background: transparent; }
+.puzzle-slot.drag-over { background: #e0e7ff; border: 2px dashed #667eea; }
+.pieces-pool { display: grid; grid-template-columns: repeat(auto-fill, minmax(55px, 1fr)); gap: 5px; padding: 8px; background: #f9f9f9; border-radius: 8px; max-height: 190px; overflow-y: auto; }
+.pieces-pool h3 { color: #667eea; margin-bottom: 6px; font-size: 0.85em; grid-column: 1 / -1; }
+.puzzle-piece { cursor: move; border-radius: 5px; transition: all 0.3s; box-shadow: 0 2px 6px rgba(0,0,0,0.2); background-size: 300% 400%; aspect-ratio: 0.75; background-repeat: no-repeat; }
+.puzzle-piece:hover { transform: scale(1.05); }
+.puzzle-piece.dragging { opacity: 0.5; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧩 Tracciabilità Alimentare</h1>
+            <p class="subtitle">Ricomponi il puzzle</p>
+            <div class="stats">
+                <div class="stat-box">Pezzi posizionati: <span id="placed">0</span>/12</div>
+                <div class="stat-box">Mosse: <span id="moves">0</span></div>
+                <button class="reset-btn" onclick="resetGame()">🔄 Ricomincia</button>
+                <button class="reset-btn" onclick="window.close()" style="background: #6b7280;">← Torna al corso</button>
+            </div>
+        </div>
+        <div class="game-area">
+            <div class="reference-area">
+                <h2>📋 Immagine di riferimento</h2>
+                <img src="tracciabilita.png" alt="tracciabilità alimentare" class="reference-image" id="referenceImg">
+                <h3 style="color: #667eea; margin-bottom: 12px; font-size: 1.1em; margin-top: 15px;">Pezzi disponibili:</h3>
+                <div class="pieces-pool" id="piecesPool"></div>
+            </div>
+            <div class="puzzle-area">
+                <div class="puzzle-grid" id="puzzleGrid"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ROWS = 4, COLS = 3, TOTAL_PIECES = ROWS * COLS;
+        let pieces = [], grid = [], moves = 0, placedPieces = 0;
+
+        function initGame() {
+            pieces = [];
+            grid = Array(TOTAL_PIECES).fill(null);
+            moves = 0; placedPieces = 0;
+            updateStats();
+            createPuzzle();
+        }
+
+        function createPuzzle() {
+            for (let i = 0; i < TOTAL_PIECES; i++) {
+                pieces.push({ id: i, correctPosition: i, row: Math.floor(i/COLS), col: i%COLS });
+            }
+            pieces.sort(() => Math.random() - 0.5);
+            renderGrid(); renderPieces();
+        }
+
+        function renderGrid() {
+            const gridEl = document.getElementById('puzzleGrid');
+            gridEl.innerHTML = '';
+            for (let i = 0; i < TOTAL_PIECES; i++) {
+                const slot = document.createElement('div');
+                slot.className = 'puzzle-slot';
+                slot.dataset.position = i;
+                slot.addEventListener('dragover', (e) => { e.preventDefault(); slot.classList.add('drag-over'); });
+                slot.addEventListener('dragleave', () => { slot.classList.remove('drag-over'); });
+                slot.addEventListener('drop', (e) => { e.preventDefault(); slot.classList.remove('drag-over'); handleDrop(e, i); });
+                if (grid[i] !== null) {
+                    const pieceData = pieces.find(p => p.id === grid[i]);
+                    slot.appendChild(createPieceElement(pieceData, true));
+                    slot.classList.add('filled');
+                }
+                gridEl.appendChild(slot);
+            }
+        }
+
+        function renderPieces() {
+            const pool = document.getElementById('piecesPool');
+            pool.innerHTML = '';
+            pieces.forEach(piece => {
+                if (!grid.includes(piece.id)) pool.appendChild(createPieceElement(piece, false));
+            });
+        }
+
+        function createPieceElement(piece, inGrid) {
+            const div = document.createElement('div');
+            div.className = 'puzzle-piece';
+            div.draggable = true;
+            div.dataset.id = piece.id;
+            div.dataset.correctPos = piece.correctPosition;
+            const row = Math.floor(piece.correctPosition / COLS);
+            const col = piece.correctPosition % COLS;
+            const bgPosX = (col * 100) / (COLS - 1);
+            const bgPosY = (row * 100) / (ROWS - 1);
+            div.style.backgroundImage = 'url(tracciabilita.png)';
+            div.style.backgroundPosition = `${bgPosX}% ${bgPosY}%`;
+            div.style.backgroundRepeat = 'no-repeat';
+            div.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('pieceId', piece.id);
+                if (inGrid) e.dataTransfer.setData('fromPosition', grid.indexOf(piece.id));
+                div.classList.add('dragging');
+            });
+            div.addEventListener('dragend', () => { div.classList.remove('dragging'); });
+            if (inGrid) div.style.cursor = 'move';
+            return div;
+        }
+
+        function handleDrop(e, position) {
+            const pieceId = parseInt(e.dataTransfer.getData('pieceId'));
+            const fromPosition = parseInt(e.dataTransfer.getData('fromPosition'));
+            if (!isNaN(fromPosition) && fromPosition !== position) grid[fromPosition] = null;
+            if (grid[position] === null) {
+                grid[position] = pieceId;
+                if (isNaN(fromPosition)) placedPieces++;
+                moves++;
+                updateStats();
+                renderGrid(); renderPieces();
+                if (placedPieces === TOTAL_PIECES) checkVictory();
+            }
+        }
+
+        function checkVictory() {
+            for (let i = 0; i < TOTAL_PIECES; i++) {
+                if (grid[i] !== i) return;
+            }
+            setTimeout(showVictory, 500);
+        }
+
+        function updateStats() {
+            document.getElementById('placed').textContent = placedPieces;
+            document.getElementById('moves').textContent = moves;
+        }
+
+        function showVictory() {
+            const popup = document.createElement('div');
+            popup.id = 'victoryPopup';
+            popup.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:999';
+            popup.innerHTML = '<div style="background:#fff;border-radius:12px;padding:30px 40px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.3);max-width:340px"><div style="font-size:3em;margin-bottom:10px">🎉</div><h2 style="color:#10b981;font-size:1.6em;margin-bottom:10px">Complimenti!</h2><p style="color:#666;font-size:1.1em;margin-bottom:20px">Hai completato il puzzle in <strong>' + moves + '</strong> mosse!</p><button class="reset-btn" onclick="resetGame()">Gioca ancora</button></div>';
+            document.body.appendChild(popup);
+        }
+
+        function resetGame() {
+            const popup = document.getElementById('victoryPopup');
+            if (popup) popup.remove();
+            initGame();
+        }
+
+        initGame();
+    </script>
+</body>
+</html>
